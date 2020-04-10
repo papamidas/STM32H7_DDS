@@ -1,3 +1,19 @@
+# simple .gitignore for STM32CUBEIDE
+
+# Compiler output
+*.o
+*.a
+*.bin
+*.elf
+*.hex
+*.lst
+*.map
+
+# other file types only found in subdirs
+*.d
+*.su
+*.mk
+
 # Ignore Debug and Release Folders
 
 Debug/
