@@ -91,7 +91,9 @@ static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 HAL_StatusTypeDef HAL_DUALDAC_Start_DMA(DAC_HandleTypeDef *hdac, uint32_t *pData, uint32_t Length,
                                     uint32_t Alignment);
-uint32_t lcg_rand(void);
+/*uint32_t lcg_rand(void);
+*/
+int irbit2(void);
 
 /* USER CODE END PFP */
 
@@ -125,38 +127,55 @@ uint32_t lcg_rand(void);
  */
 void dds()
 {
-	int bitctr=0;
-	uint16_t randombit;
-	uint32_t randomnumber;
-
-	randomnumber = lcg_rand();
 	for (int i=0; i<HALFBUFFERSIZE; i++){
-		randombit = (randomnumber >> bitctr) & 1;
-		HAL_GPIO_WritePin(PROFILE3_GPIO_Port, PROFILE3_Pin, randombit);
-		bitctr++;
-		if (bitctr > 32)
-		{
-			randomnumber = lcg_rand();
-			bitctr = 0;
-		}
 		phase1 += phaseinc1;              //increment phase accumulator1 by phase increment value
 		phase2 += phaseinc2;              //increment phase accumulator2 by phase increment value
 		//HAL_GPIO_WritePin(PROFILE2_GPIO_Port, PROFILE2_Pin, GPIO_PIN_SET);
-		*((uint16_t*)dacbufptr) = sintab[*phase1_16ptr] + 0.5 * randombit;
+		int randombit = irbit2();
+		//HAL_GPIO_WritePin(PROFILE3_GPIO_Port, PROFILE3_Pin, randombit); // output of random bit on pin PROFILE3
+		*((uint16_t*)dacbufptr) = sintab[*phase1_16ptr] + randombit;
 		*((uint16_t*)dacbufptr + 1) = sintab[*phase2_16ptr] + randombit;
 		//HAL_GPIO_WritePin(PROFILE2_GPIO_Port, PROFILE2_Pin, GPIO_PIN_RESET);
 		dacbufptr++;
 	}
 }
 
+// irbit2: random number generator from book "Numerical Recipes i  C"
+//
+#define IB1 1 // Powers of 2.
+#define IB2 2
+#define IB5 16
+#define IB18 131072
+#define MASK (IB1+IB2+IB5)
+
+uint32_t iseed;
+
+int irbit2(void)
+// Returns as an integer a random bit, based on the 18 low-significance bits in iseed (which is modified for the next call).
+{
+    if (iseed & IB18)
+    {
+        //Change all masked bits, shift, and put 1 into bit 1.
+        iseed=((iseed ^ MASK) << 1) | IB1;
+        return 1;
+    }
+    else
+    {
+        // Shift and put 0 into bit 1.
+        iseed <<= 1;
+        return 0;
+    }
+}
+
 // random number generator from Wikipedia entry
 // https://en.wikipedia.org/wiki/Lehmer_random_number_generator
-uint32_t state = 1;
+/*uint32_t state = 1;
 
 uint32_t lcg_rand(void)
 {
     return state = (uint64_t)state * 279470273u % 0xfffffffb;
 }
+*/
 
 void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
@@ -184,6 +203,7 @@ void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+  iseed = 12345;
   phase1_16ptr = (uint16_t*)&phase1 + 1; // Pointer to upper (most significant) word of phase1
   phase2_16ptr = (uint16_t*)&phase2 + 1; // Pointer to upper (most significant) word of phase2
   for(int i=0; i<SINTABLEN; i++)
