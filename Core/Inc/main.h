@@ -64,8 +64,6 @@ void Error_Handler(void);
 #define LD3_GPIO_Port GPIOB
 #define PROFILE3_Pin GPIO_PIN_7
 #define PROFILE3_GPIO_Port GPIOC
-#define PROFILE1_Pin GPIO_PIN_3
-#define PROFILE1_GPIO_Port GPIOB
 #define PROFILE0_Pin GPIO_PIN_4
 #define PROFILE0_GPIO_Port GPIOB
 #define PROFILE2_Pin GPIO_PIN_5

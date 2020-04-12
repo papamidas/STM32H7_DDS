@@ -45,10 +45,11 @@
 /* USER CODE BEGIN PD */
 #define DACMAX 4095
 #define DACMID 2048
-#define HALFBUFFERSIZE 128
-#define FULLBUFFERSIZE 256
+#define HALFBUFFERSIZE 512
+#define FULLBUFFERSIZE 1024
 #define SINTABLEN 65536
 #define PHASEINCRESETVAL 85899346
+
 
 /* USER CODE END PD */
 
@@ -78,6 +79,15 @@ uint32_t phaseinc2;
 uint16_t sintab[SINTABLEN];
 //uint16_t sintabnf[SINTABLEN];  // noise free sine table
 uint16_t resetphase = 0;
+uint16_t tracedummy = 0;
+
+/* Pofiling/Benchmarking with ARM cycle counter
+ */
+volatile uint32_t cycleCounter = 0;
+// addresses of registers
+volatile uint32_t *DWT_CONTROL = (uint32_t *)0xE0001000;
+volatile uint32_t *DWT_CYCCNT = (uint32_t *)0xE0001004;
+volatile uint32_t *DEMCR = (uint32_t *)0xE000EDFC;
 
 /* USER CODE END PV */
 
@@ -91,9 +101,11 @@ static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 HAL_StatusTypeDef HAL_DUALDAC_Start_DMA(DAC_HandleTypeDef *hdac, uint32_t *pData, uint32_t Length,
                                     uint32_t Alignment);
+void ITM_enable(void);
 /*uint32_t lcg_rand(void);
 */
-int irbit2(void);
+/*int irbit2(void);
+*/
 
 /* USER CODE END PFP */
 
@@ -131,15 +143,13 @@ void dds()
 		phase1 += phaseinc1;              //increment phase accumulator1 by phase increment value
 		phase2 += phaseinc2;              //increment phase accumulator2 by phase increment value
 		//HAL_GPIO_WritePin(PROFILE2_GPIO_Port, PROFILE2_Pin, GPIO_PIN_SET);
-		int randombit = irbit2();
-		//HAL_GPIO_WritePin(PROFILE3_GPIO_Port, PROFILE3_Pin, randombit); // output of random bit on pin PROFILE3
-		*((uint16_t*)dacbufptr) = sintab[*phase1_16ptr] + randombit;
-		*((uint16_t*)dacbufptr + 1) = sintab[*phase2_16ptr] + randombit;
+		*dacbufptr++ = sintab[*((uint16_t*)&phase1 + 1)] +
+				       ((uint32_t)sintab[*((uint16_t*)&phase2 + 1)] << 16);
 		//HAL_GPIO_WritePin(PROFILE2_GPIO_Port, PROFILE2_Pin, GPIO_PIN_RESET);
-		dacbufptr++;
 	}
 }
 
+/*
 // irbit2: random number generator from book "Numerical Recipes i  C"
 //
 #define IB1 1 // Powers of 2.
@@ -166,6 +176,7 @@ int irbit2(void)
         return 0;
     }
 }
+*/
 
 // random number generator from Wikipedia entry
 // https://en.wikipedia.org/wiki/Lehmer_random_number_generator
@@ -180,18 +191,22 @@ uint32_t lcg_rand(void)
 void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
 	HAL_GPIO_WritePin(PROFILE0_GPIO_Port, PROFILE0_Pin, GPIO_PIN_SET);
+	//ITM_SendChar( 65 );   //  Send ASCII code 65 = ’A’
+	cycleCounter = *DWT_CYCCNT;
     dacbufptr = &dacbuf[HALFBUFFERSIZE];
     dds();
+    //ITM_SendChar( 66 );   //  Send ASCII code 66 = ’B’
+	tracedummy = *DWT_CYCCNT - cycleCounter;
 	HAL_GPIO_WritePin(PROFILE0_GPIO_Port, PROFILE0_Pin, GPIO_PIN_RESET);
 }
 
 void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
-	HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_SET);
+	//HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_SET); // PB3 = TRACESWO!!!
     dacbufptr = dacbuf;
     //dac2bufptr = dac2buf;
     dds();
-	HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_RESET);
+	//HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_RESET);
 }
 
 /* USER CODE END 0 */
@@ -203,7 +218,7 @@ void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  iseed = 12345;
+  //iseed = 12345;
   phase1_16ptr = (uint16_t*)&phase1 + 1; // Pointer to upper (most significant) word of phase1
   phase2_16ptr = (uint16_t*)&phase2 + 1; // Pointer to upper (most significant) word of phase2
   for(int i=0; i<SINTABLEN; i++)
@@ -218,6 +233,15 @@ int main(void)
   printf("phaseinc2 = ");
   printf("%lu\n", phaseinc2);
   //phaseinc2 = 55;
+
+  /* Benchmarking/profiling:
+   *
+  */// enable the use DWT
+  *DEMCR = *DEMCR | 0x01000000;
+  // Reset cycle counter
+  *DWT_CYCCNT = 0;
+  // enable cycle counter
+  *DWT_CONTROL = *DWT_CONTROL | 1 ;
 
   /* USER CODE END 1 */
 
@@ -246,6 +270,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_DUALDAC_Start_DMA(&hdac1, dacbuf, FULLBUFFERSIZE, DAC_ALIGN_12B_R);
   HAL_TIM_Base_Start(&htim6);
+  ITM_enable();
 
   /* USER CODE END 2 */
 
@@ -383,12 +408,6 @@ static void MX_DAC1_Init(void)
   {
     Error_Handler();
   }
-  /** Configure Noise wave generation on DAC OUT1 
-  */
-  if (HAL_DACEx_NoiseWaveGenerate(&hdac1, DAC_CHANNEL_1, DAC_LFSRUNMASK_BIT0) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /** DAC channel OUT2 config 
   */
   sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
@@ -422,7 +441,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 399;
+  htim6.Init.Period = 39;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -522,8 +541,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|PROFILE1_Pin|PROFILE0_Pin 
-                          |PROFILE2_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|PROFILE0_Pin|PROFILE2_Pin 
+                          |LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_RESET);
@@ -553,10 +572,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD1_Pin LD3_Pin PROFILE1_Pin PROFILE0_Pin 
-                           PROFILE2_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|PROFILE1_Pin|PROFILE0_Pin 
-                          |PROFILE2_Pin|LD2_Pin;
+  /*Configure GPIO pins : LD1_Pin LD3_Pin PROFILE0_Pin PROFILE2_Pin 
+                           LD2_Pin */
+  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|PROFILE0_Pin|PROFILE2_Pin 
+                          |LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -701,6 +720,57 @@ HAL_StatusTypeDef HAL_DUALDAC_Start_DMA(DAC_HandleTypeDef *hdac, uint32_t *pData
 
   /* Return function status */
   return status;
+}
+
+void ITM_enable(void)
+{
+#define SWO_BASE (0x5C003000UL)
+#define SWTF_BASE (0x5C004000UL)
+ __IO GPIO_TypeDef *GPIOBRegs = (GPIO_TypeDef *)GPIOB;
+
+ uint32_t SWOSpeed = 2000000; /* [Hz] we have 2 Mbps SWO speed in ST-Link SWV viewer
+ if we select 400000000 Hz core clock */
+ uint32_t SWOPrescaler = (SystemCoreClock / SWOSpeed) - 1; /* divider value */
+
+ //enable debug clocks
+ DBGMCU->CR = 0x00700000; //enable debug clocks
+
+ //UNLOCK FUNNEL
+ //SWTF->LAR unlock
+ *((__IO uint32_t *)(SWTF_BASE + 0xFB0)) = 0xC5ACCE55; //unlock SWTF
+
+ //SWO->LAR unlock
+ *((uint32_t *)(SWO_BASE + 0xFB0)) = 0xC5ACCE55; //unlock SWO
+
+ //SWO divider setting
+ //This divider value (0x000000C7) corresponds to 400Mhz core clock
+ //SWO->CODR = PRESCALER[12:0]
+ *((__IO uint32_t *)(SWO_BASE + 0x010)) = SWOPrescaler; //clock divider
+
+ //SWO set the protocol
+ //SWO->SPPR = PPROT[1:0] = NRZ
+ *((__IO uint32_t *)(SWO_BASE + 0x0F0)) = 0x00000002; //set to NRZ
+
+ //Enable ITM input of SWO trace funnel, slave 0
+ //SWTF->CTRL bit 0 ENSO = Enable
+ *((__IO uint32_t *)(SWTF_BASE + 0x000)) |= 0x00000001; //enable
+
+ //RCC_AHB4ENR enable GPIOB clock - maybe done already
+ RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN;
+
+ //Configure GPIOB_MODER pin 3 as AF
+ GPIOBRegs->MODER &= ~GPIO_MODER_MODE3; //clear MODER3 bits
+ GPIOBRegs->MODER |=
+ GPIO_MODE_AF_PP << GPIO_OSPEEDR_OSPEED3_Pos; //set MODER3 PIN3 bits as AF
+
+ //Configure GPIOB_OSPEEDR pin 3 Speed
+ GPIOBRegs->OSPEEDR &=
+ ~GPIO_OSPEEDR_OSPEED3; //clear OSPEEDR3 bits
+ GPIOBRegs->OSPEEDR |=
+ GPIO_SPEED_FREQ_HIGH << GPIO_OSPEEDR_OSPEED3_Pos; //set OSPEEDR3 PIN3 bits as High Speed
+
+ //Force AF0 for GPIOB_AFRL, AFR[0] for pin 3
+ GPIOBRegs->AFR[0] &= ~GPIO_AFRL_AFRL3; //clear AFR2 PIN3 = 0 for AF0
 }
 
 /* USER CODE END 4 */
