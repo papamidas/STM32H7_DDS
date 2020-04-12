@@ -19,3 +19,6 @@
 Debug/
 Release/
 
+# Ignore also Results Folder (used for intermediate results)
+
+Results/
