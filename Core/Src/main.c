@@ -68,7 +68,8 @@ TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-uint32_t dacbuf[FULLBUFFERSIZE];
+__attribute__((section(".dma_buffer"))) uint32_t dacbuf[FULLBUFFERSIZE];
+
 volatile uint32_t* dacbufptr = dacbuf;
 volatile uint32_t phase1;
 volatile uint32_t phase2;
@@ -77,7 +78,6 @@ volatile uint16_t* phase2_16ptr;
 uint32_t phaseinc1;
 uint32_t phaseinc2;
 uint16_t sintab[SINTABLEN];
-//uint16_t sintabnf[SINTABLEN];  // noise free sine table
 uint16_t resetphase = 0;
 uint16_t tracedummy = 0;
 
@@ -102,10 +102,6 @@ static void MX_TIM6_Init(void);
 HAL_StatusTypeDef HAL_DUALDAC_Start_DMA(DAC_HandleTypeDef *hdac, uint32_t *pData, uint32_t Length,
                                     uint32_t Alignment);
 void ITM_enable(void);
-/*uint32_t lcg_rand(void);
-*/
-/*int irbit2(void);
-*/
 
 /* USER CODE END PFP */
 
@@ -149,64 +145,20 @@ void dds()
 	}
 }
 
-/*
-// irbit2: random number generator from book "Numerical Recipes i  C"
-//
-#define IB1 1 // Powers of 2.
-#define IB2 2
-#define IB5 16
-#define IB18 131072
-#define MASK (IB1+IB2+IB5)
-
-uint32_t iseed;
-
-int irbit2(void)
-// Returns as an integer a random bit, based on the 18 low-significance bits in iseed (which is modified for the next call).
-{
-    if (iseed & IB18)
-    {
-        //Change all masked bits, shift, and put 1 into bit 1.
-        iseed=((iseed ^ MASK) << 1) | IB1;
-        return 1;
-    }
-    else
-    {
-        // Shift and put 0 into bit 1.
-        iseed <<= 1;
-        return 0;
-    }
-}
-*/
-
-// random number generator from Wikipedia entry
-// https://en.wikipedia.org/wiki/Lehmer_random_number_generator
-/*uint32_t state = 1;
-
-uint32_t lcg_rand(void)
-{
-    return state = (uint64_t)state * 279470273u % 0xfffffffb;
-}
-*/
-
 void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
 	HAL_GPIO_WritePin(PROFILE0_GPIO_Port, PROFILE0_Pin, GPIO_PIN_SET);
-	//ITM_SendChar( 65 );   //  Send ASCII code 65 = ’A’
-	cycleCounter = *DWT_CYCCNT;
+	cycleCounter = *DWT_CYCCNT;  // store current CPU cycle counter value
     dacbufptr = &dacbuf[HALFBUFFERSIZE];
     dds();
-    //ITM_SendChar( 66 );   //  Send ASCII code 66 = ’B’
-	tracedummy = *DWT_CYCCNT - cycleCounter;
+	tracedummy = *DWT_CYCCNT - cycleCounter;  // calculate elapsed CPU cycles
 	HAL_GPIO_WritePin(PROFILE0_GPIO_Port, PROFILE0_Pin, GPIO_PIN_RESET);
 }
 
 void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
-	//HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_SET); // PB3 = TRACESWO!!!
     dacbufptr = dacbuf;
-    //dac2bufptr = dac2buf;
     dds();
-	//HAL_GPIO_WritePin(PROFILE1_GPIO_Port, PROFILE1_Pin, GPIO_PIN_RESET);
 }
 
 /* USER CODE END 0 */
@@ -218,9 +170,6 @@ void HAL_DAC_ConvHalfCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  //iseed = 12345;
-  phase1_16ptr = (uint16_t*)&phase1 + 1; // Pointer to upper (most significant) word of phase1
-  phase2_16ptr = (uint16_t*)&phase2 + 1; // Pointer to upper (most significant) word of phase2
   for(int i=0; i<SINTABLEN; i++)
   {
 	  sintab[i] = (DACMID - 1) * 0.9 * sin(i * 2.0 * M_PI / SINTABLEN) + DACMID;
@@ -291,22 +240,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  /*
-	  HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-	  HAL_Delay(100);
-	  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	  HAL_Delay(100);
-	  HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-	  HAL_Delay(100);
-	  */
       HAL_Delay(1);
-      /*HAL_GPIO_WritePin(PROFILE3_GPIO_Port, PROFILE3_Pin, GPIO_PIN_SET);
-      for(int i=0; i<SINTABLEN; i++)
-	  {
-		  sintab[i] = sintabnf[i] + (rand() % 2);
-	  }
-      HAL_GPIO_WritePin(PROFILE3_GPIO_Port, PROFILE3_Pin, GPIO_PIN_RESET);
-      */
   }
   /* USER CODE END 3 */
 }

@@ -171,6 +171,12 @@ SECTIONS
     . = ALIGN(8);
   } >RAM_D1
 
+  /* section for dma buffer in D2 domain so DMA to DAC can run locally */
+  .dma_buffer : /* Space before ':' is critical */
+  {
+    *(.dma_buffer)
+  } >RAM_D2
+ 
   /* Remove information from the compiler libraries */
   /DISCARD/ :
   {
