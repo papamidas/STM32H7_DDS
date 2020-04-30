@@ -26,6 +26,12 @@
  *                        opensource.org/licenses/BSD-3-Clause
  *
  ******************************************************************************
+ *
+ *
+ * sections dmabuffer and uninitvars
+ * added by DM1CR
+ *
+ *
  */
 
 /* Entry Point */
@@ -172,10 +178,18 @@ SECTIONS
   } >RAM_D1
 
   /* section for dma buffer in D2 domain so DMA to DAC can run locally */
+  /* added by DM1CR */
   .dma_buffer : /* Space before ':' is critical */
   {
     *(.dma_buffer)
   } >RAM_D2
+
+  /* section for sinetable and other variables that require fast access */
+  /* added by DM1CR */
+  .uninit_vars : /* Space before ':' is critical */
+  {
+    *(.uninit_vars)
+  } >DTCMRAM
  
   /* Remove information from the compiler libraries */
   /DISCARD/ :
